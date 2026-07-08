@@ -1,0 +1,654 @@
+{
+  "name": "Praxis Ops - Website to Voice to WhatsApp to Booking",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "new-lead",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "1",
+      "name": "Website Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "8d2f3a1b-9c4f-4af3-9d55-website-lead"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true } }}"
+      },
+      "id": "2",
+      "name": "Immediate Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [500, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nconst trim = (value) => String(value ?? '').trim();\nconst normalizePhone = (value) => {\n  const raw = trim(value);\n  const digits = raw.replace(/\\D+/g, '');\n  if (!digits) return '';\n  return raw.startsWith('+') ? `+${digits}` : digits;\n};\nconst name = trim(body.name);\nconst phone = normalizePhone(body.phone);\nconst email = trim(body.email);\nconst company = trim(body.company);\nconst industry = trim(body.industry);\nconst currentProcess = trim(body.currentProcess);\nconst desiredOutcome = trim(body.desiredOutcome);\nconst notes = trim(body.notes ?? body.additionalNotes ?? body.message);\nconst formType = trim(body.formType ?? 'request_ai_demo');\nconst leadId = trim(body.lead_id ?? body.leadId) || `lead_${new Date().toISOString().replace(/[-:.TZ]/g, '')}_${Math.random().toString(36).slice(2, 8)}`;\nconst createdAt = new Date().toISOString();\nconst delaySeconds = Math.floor(30 + Math.random() * 61);\nconst errors = [];\nif (!name) errors.push('name is required');\nif (formType !== 'support' && !phone) errors.push('phone is required');\nif (phone && phone.replace(/\\D/g, '').length < 8) errors.push('phone must contain at least 8 digits');\nif (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push('email is invalid');\nreturn [{ json: { ...body, name, phone, email, company, industry, currentProcess, desiredOutcome, notes, formType, leadId, createdAt, delaySeconds, isValid: errors.length === 0, validationErrors: errors, status: errors.length === 0 ? 'NEW' : 'INVALID', callStatus: errors.length === 0 ? (formType === 'support' ? 'NOT_REQUIRED' : 'PENDING') : 'NOT_STARTED', booked: false, leadScore: 0, advisor: formType === 'support' ? 'Support Team' : '', summary: '', nextAction: errors.length === 0 ? (formType === 'support' ? 'SUPPORT' : 'CALL') : 'RECOVER' } }];"
+      },
+      "id": "3",
+      "name": "Normalize Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.isValid}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "4",
+      "name": "Valid Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/{{$env.AIRTABLE_BASE_ID}}/{{$env.AIRTABLE_TABLE || 'Leads'}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env.AIRTABLE_API_KEY}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { records: [ { fields: { 'Lead ID': $json.leadId, Timestamp: $json.createdAt, Name: $json.name, Phone: $json.phone, Email: $json.email, Company: $json.company, Industry: $json.industry, 'Current Process': $json.currentProcess, 'Desired Outcome': $json.desiredOutcome, Status: 'NEW', 'Call Status': 'PENDING', 'Lead Score': 0, Advisor: '', Booked: false, Summary: '', 'Conversation Notes': '', 'Next Action': 'CALL' } } ], performUpsert: { fieldsToMergeOn: ['Lead ID'] } } }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "5",
+      "name": "Update Airtable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1260, 220],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/{{$env.AIRTABLE_BASE_ID}}/{{$env.AIRTABLE_TABLE || 'Leads'}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env.AIRTABLE_API_KEY}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { records: [ { fields: { 'Lead ID': $json.leadId, Timestamp: $json.createdAt, Name: $json.name, Phone: $json.phone, Email: $json.email, Company: $json.company, Industry: $json.industry, 'Current Process': $json.currentProcess, 'Desired Outcome': $json.desiredOutcome, Status: 'INVALID', 'Call Status': 'SKIPPED', 'Lead Score': 0, Advisor: '', Booked: false, Summary: 'Validation failed', 'Conversation Notes': $json.validationErrors.join('; '), 'Next Action': 'MANUAL_REVIEW' } } ], performUpsert: { fieldsToMergeOn: ['Lead ID'] } } }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "6",
+      "name": "Store Partial Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1260, 420],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $json;\nreturn [{ json: { ...lead, voiceSystemPrompt: `You are Praxis Advisor.\n\nYou work for Praxis Ops.\n\nYour goal is not to sell. Your goal is to understand whether we can actually help.\n\nTone: professional, calm, minimal, intelligent, confident.\nNever salesy. Never hype. Never push. Never sound scripted. Never say revolutionary, cutting edge, game changing, AI powered, or state of the art.\n\nStart naturally: Hi ${lead.name}. This is Praxis Ops. You recently reached out through our website. Wanted to understand your current process and see whether we can actually help.\n\nIf now is not a good time, ask for a better time. Never force conversation. Keep answers short. Ask one question at a time. Do not exceed 20 seconds per response. Do not sound like customer support. Behave like an operations consultant.\n\nDiscovery framework: understand current business, team size, lead volume, biggest bottleneck, existing tools, monthly customer count, current process, urgency, budget comfort, timeline. Adapt question order naturally. Do not interrogate.\n\nFAQ answers:\n- What exactly do you do? We help businesses reduce manual follow-up and create reliable operational systems using automation and intelligent workflows.\n- Are you selling software? No. We build and deploy systems around your existing process.\n- How much does it cost? That depends on complexity and volume. We usually understand the process first and then recommend a structure.\n- Will this replace employees? Usually no. Most businesses use these systems to remove repetitive work and let teams focus on higher value tasks.\n- How long? Simple deployments can move quickly while more integrated systems depend on scope.`,\n  voicePayload: {\n    agent_name: 'Praxis Advisor',\n    role: 'AI Solutions Consultant',\n    language: 'auto',\n    tone: 'warm_fast_professional_natural',\n    lead_id: lead.leadId,\n    name: lead.name,\n    phone: lead.phone,\n    email: lead.email,\n    company: lead.company,\n    industry: lead.industry,\n    currentProcess: lead.currentProcess,\n    desiredOutcome: lead.desiredOutcome,\n    system_prompt: `You are Praxis Advisor.\\n\\nCompany: PRAXIS OPS.\\nSupport: praxisOps.support@gmail.com.\\nBusiness type: AI Operations Agency.\\nPositioning: Praxis Ops builds intelligent business systems. We deploy AI operators that generate leads, qualify customers, handle conversations, book appointments, automate workflows, and operate inside businesses. We are not selling software. We design and implement operational systems.\\n\\nVoice rules: professional, calm, minimal, intelligent, confident. Never salesy. Never hype. Never push. Never sound scripted. Never say revolutionary, cutting edge, game changing, AI powered, or state of the art. Do not mention automation repeatedly. Do not mention AI unless the user asks. Do not pressure. Keep answers short. Ask one question at a time. Do not exceed 20 seconds per response. Do not sound like customer support. Behave like an operations consultant.\\n\\nYour goal is not to sell. Your goal is to understand. Start naturally. If now is not a good time, ask for a better time. Never force conversation.\\n\\nDiscovery framework: current business, team size, lead volume, biggest bottleneck, existing tools, monthly customer count, current process, urgency, budget comfort, timeline. Adapt question order naturally. Do not interrogate.\\n\\nExamples by industry:\\n- Real Estate: website lead -> call -> qualification -> site visit.\\n- Healthcare: patient inquiries -> booking -> reminders.\\n- Education: admissions -> qualification -> scheduling.\\n- Services: lead -> proposal -> follow-up.`,\n    faq: [\n      { question: 'What exactly do you do?', answer: 'We help businesses reduce manual follow-up and create reliable operational systems using automation and intelligent workflows.' },\n      { question: 'Are you selling software?', answer: 'No. We build and deploy systems around your existing process.' },\n      { question: 'How much does it cost?', answer: 'That depends on complexity and volume. We usually understand the process first and then recommend a structure.' },\n      { question: 'Will this replace employees?', answer: 'Usually no. Most businesses use these systems to remove repetitive work and let teams focus on higher value tasks.' },\n      { question: 'How long?', answer: 'Simple deployments can move quickly while more integrated systems depend on scope.' }\n    ]\n  } }];"
+      },
+      "id": "7",
+      "name": "Prepare Voice Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PRAXIS_VOICE_AGENT_URL}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ $json.voicePayload }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "8",
+      "name": "Start AI Voice Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1760, 220],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.pickup === false || $json.call_status === 'MISSED'}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "9",
+      "name": "No Pickup?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/{{$env.AIRTABLE_BASE_ID}}/{{$env.AIRTABLE_TABLE || 'Leads'}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env.AIRTABLE_API_KEY}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { records: [ { fields: { 'Lead ID': $json.leadId, Status: 'NEW', 'Call Status': 'MISSED', Summary: $json.summary || 'No pickup', 'Conversation Notes': $json.notes || '', 'Next Action': 'WHATSAPP' } } ], performUpsert: { fieldsToMergeOn: ['Lead ID'] } } }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "10",
+      "name": "Update Airtable - Missed Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2240, 60],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $json;\nconst message = `Hi ${lead.name}. We tried reaching out from Praxis Ops. No rush. Reply here with a good time and we'll reconnect.`;\nreturn [{ json: { ...lead, whatsappMessage: message } }];"
+      },
+      "id": "11",
+      "name": "Prepare WhatsApp Follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, 60]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PRAXIS_WHATSAPP_WEBHOOK_URL}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { to: $json.phone, name: $json.name, message: $json.whatsappMessage, lead_id: $json.leadId } }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "12",
+      "name": "Send WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2720, 60],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": "=15",
+        "unit": "minutes"
+      },
+      "id": "13",
+      "name": "Wait Reply",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [2960, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $json;\nconst pickup = lead.pickup !== false;\nconst engagement = String(lead.sentiment ?? lead.engagement ?? '').toLowerCase();\nconst objections = String(lead.objections ?? '').toLowerCase();\nconst urgency = String(lead.urgency ?? lead.timeline ?? '').toLowerCase();\nconst budget = String(lead.budget ?? '').toLowerCase();\nconst volume = String(lead.lead_size ?? lead.leadVolume ?? '').toLowerCase();\nlet score = Number(lead.leadScore || 0);\nif (pickup) score += 20;\nif (/hot|high|urgent|now|asap|soon/.test(urgency)) score += 20;\nif (/large|many|high|growing|frequent/.test(volume)) score += 20;\nif (/budget|comfortable|approved|ready|yes/.test(budget)) score += 20;\nif (/positive|interested|good|engaged|open/.test(engagement)) score += 20;\nif (/price|cost|later|not now|maybe/.test(objections)) score -= 10;\nscore = Math.max(0, Math.min(100, score));\nconst segment = score >= 80 ? 'HOT' : score >= 50 ? 'WARM' : 'COLD';\nconst advisor = segment === 'HOT' ? 'Human Advisor' : segment === 'WARM' ? 'Advisor Queue' : 'Nurture Queue';\nconst nextAction = segment === 'HOT' ? 'BOOK' : 'FOLLOW_UP';\nconst summary = lead.summary || lead.call_summary || lead.notes || '';\nconst conversationNotes = [lead.currentProcess, lead.desiredOutcome, lead.notes, lead.objections].filter(Boolean).join(' | ');\nreturn [{ json: { ...lead, pickup, leadScore: score, segment, advisor, nextAction, summary, conversationNotes, booked: segment === 'HOT' } }];"
+      },
+      "id": "14",
+      "name": "Score Conversation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3200, 220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.leadScore}}",
+              "operation": "largerEqual",
+              "value2": 80
+            }
+          ]
+        }
+      },
+      "id": "15",
+      "name": "Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3440, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PRAXIS_BOOKING_WEBHOOK_URL}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { lead_id: $json.leadId, name: $json.name, phone: $json.phone, company: $json.company, industry: $json.industry, score: $json.leadScore, summary: $json.summary, requested_action: 'BOOK_SITE_VISIT' } }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "16",
+      "name": "Book Site Visit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3680, 80],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $json;\nconst advisorByIndustry = {\n  'real estate': 'Human Advisor - Real Estate',\n  healthcare: 'Human Advisor - Healthcare',\n  education: 'Human Advisor - Education',\n  smb: 'Human Advisor - SMB',\n};\nconst industry = String(lead.industry ?? '').toLowerCase();\nconst advisor = advisorByIndustry[industry] || lead.advisor || 'Human Advisor';\nreturn [{ json: { ...lead, advisor, booked: true, nextAction: 'CONFIRM_BOOKING' } }];"
+      },
+      "id": "17",
+      "name": "Assign Human Advisor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3920, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/{{$env.AIRTABLE_BASE_ID}}/{{$env.AIRTABLE_TABLE || 'Leads'}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env.AIRTABLE_API_KEY}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { records: [ { fields: { 'Lead ID': $json.leadId, Status: $json.segment, 'Call Status': $json.pickup ? 'COMPLETED' : 'MISSED', 'Lead Score': $json.leadScore, Advisor: $json.advisor, Booked: $json.booked, Summary: $json.summary, 'Conversation Notes': $json.conversationNotes, 'Next Action': $json.nextAction } } ], performUpsert: { fieldsToMergeOn: ['Lead ID'] } } }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "18",
+      "name": "Final Airtable Update - Hot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [4160, 80],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/{{$env.AIRTABLE_BASE_ID}}/{{$env.AIRTABLE_TABLE || 'Leads'}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env.AIRTABLE_API_KEY}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { records: [ { fields: { 'Lead ID': $json.leadId, Status: $json.segment, 'Call Status': $json.pickup ? 'COMPLETED' : 'MISSED', 'Lead Score': $json.leadScore, Advisor: $json.advisor, Booked: false, Summary: $json.summary, 'Conversation Notes': $json.conversationNotes, 'Next Action': 'NURTURE' } } ], performUpsert: { fieldsToMergeOn: ['Lead ID'] } } }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      },
+      "id": "19",
+      "name": "Final Airtable Update - Nurture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3680, 380],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $json;\nreturn [{ json: { ...lead, resumeNote: 'Lead replied after WhatsApp follow-up. Resume qualification naturally and continue from the last open question.' } }];"
+      },
+      "id": "20",
+      "name": "Resume Qualification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3200, 60]
+    }
+  ],
+  "connections": {
+    "Website Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Immediate Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Immediate Success": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Data": {
+      "main": [
+        [
+          {
+            "node": "Valid Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Lead?": {
+      "main": [
+        [
+          {
+            "node": "Update Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store Partial Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Partial Lead": {
+      "main": [
+        []
+      ]
+    },
+    "Update Airtable": {
+      "main": [
+        [
+          {
+            "node": "Prepare Voice Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Voice Prompt": {
+      "main": [
+        [
+          {
+            "node": "Start AI Voice Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start AI Voice Agent": {
+      "main": [
+        [
+          {
+            "node": "No Pickup?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Pickup?": {
+      "main": [
+        [
+          {
+            "node": "Update Airtable - Missed Call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Score Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Airtable - Missed Call": {
+      "main": [
+        [
+          {
+            "node": "Prepare WhatsApp Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare WhatsApp Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Wait Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Reply": {
+      "main": [
+        [
+          {
+            "node": "Resume Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume Qualification": {
+      "main": [
+        [
+          {
+            "node": "Score Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Conversation": {
+      "main": [
+        [
+          {
+            "node": "Hot Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot Lead?": {
+      "main": [
+        [
+          {
+            "node": "Book Site Visit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Final Airtable Update - Nurture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Book Site Visit": {
+      "main": [
+        [
+          {
+            "node": "Assign Human Advisor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Human Advisor": {
+      "main": [
+        [
+          {
+            "node": "Final Airtable Update - Hot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Airtable Update - Hot": {
+      "main": [
+        []
+      ]
+    },
+    "Final Airtable Update - Nurture": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "Asia/Kolkata"
+  },
+  "staticData": {},
+  "pinData": {},
+  "versionId": "1"
+}

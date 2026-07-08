@@ -1,0 +1,100 @@
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+.pnp
+.pnp.js
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production.local
+.env.development.local
+.env.example
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+coverage/
+
+# Development
+.vite/
+.turbo/
+.turbopack/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing
+.nyc_output/
+coverage/
+jest.config.js
+.jest-cache/
+.mocha*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Misc
+*.tsbuildinfo
+.cache/
+.parcel-cache
+dist-ssr/
+*.rar
+
+# API and temporary
+api/node_modules/
+api/dist/
+api/.env*
+
+# n8n
+n8n/node_modules/
+n8n/.env*
+n8n/data/
+
+# Vercel
+.vercel/
+
+# System
+.DS_Store
+.AppleDouble
+.LSOverride
+*.pem
+*.key
+*.crt
+*.cert
